@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 # Configuration
-INPUT_DIR = "markdown_reports"
-OUTPUT_DIR = "processed_reports"
+INPUT_DIR = "azure_output"
+OUTPUT_DIR = "clean_reports"
 BOILERPLATE_PATTERNS = [
     r"The financial information in this document is reported in Canadian dollars.*?(?=##|$)",
     r"Reported results conform with generally accepted accounting principles.*?(?=##|$)",
@@ -68,7 +68,7 @@ def resolve_footnotes(content):
     for num, text in footnote_defs.items():
         # Handle word1 or text1 (trailing digits)
         # Using [a-zA-Z] to avoid matching years or actual numbers
-        pattern = rf'([a-zA-Z])({num})(\b|[^\d])'
+        pattern = rf'([a-z]|\n)({num})(\b|[^\d])'
         replacement = rf'\1 [Footnote {num}: {text}]\3'
         new_content = re.sub(pattern, replacement, new_content)
         
@@ -109,14 +109,14 @@ def process_file(file_path):
             page_num = int(page_num_match.group(1))
 
         # 1. Clean Comments (already extracted)
-        clean_page = re.sub(r'<!--.*?-->', '', page_content).strip()
+        #clean_page = re.sub(r'<!--.*?-->', '', page_content).strip()
         
         # 2. Remove Boilerplate (optional - uncomment if you want to strip it)
         # for pattern in BOILERPLATE_PATTERNS:
         #    clean_page = re.sub(pattern, '', clean_page, flags=re.DOTALL | re.IGNORECASE)
 
         # 3. Clean Tables
-        clean_page = clean_html_tables(clean_page)
+        clean_page = clean_html_tables(page_content)
         
         # 4. Normalize Numbers
         clean_page = normalize_numbers(clean_page)
@@ -153,14 +153,14 @@ def main():
         all_processed_data.extend(page_data)
         
         # Also save individual cleaned files for inspection
-        with open(output_path / f"cleaned_{md_file.name}", 'w', encoding='utf-8') as f:
+        with open(output_path / f"{md_file.name}", 'w', encoding='utf-8') as f:
             for page in page_data:
                 f.write(f"--- PAGE {page['metadata']['page']} ---\n")
                 f.write(page['text'] + "\n\n")
 
     # Save as a single JSON for easy RAG loading
-    with open(output_path / "rag_ready_data.json", 'w', encoding='utf-8') as f:
-        json.dump(all_processed_data, f, indent=2)
+    #with open(output_path / "rag_ready_data.json", 'w', encoding='utf-8') as f:
+        #json.dump(all_processed_data, f, indent=2)
 
     print(f"\nSuccess! Processed data saved to {OUTPUT_DIR}")
     print(f"Total chunks/pages processed: {len(all_processed_data)}")

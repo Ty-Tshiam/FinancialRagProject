@@ -5,7 +5,12 @@ from azure.ai.documentintelligence.models import AnalyzeDocumentRequest, Documen
 import os
 import json
 import re
-from pypdf import PdfReader, PdfWriter
+import process_module 
+
+#Configuration & Global Variables
+DOWNLOAD_DIR = "reports_archive"
+AZURE_MARKDOWNS = "azure_output"
+OUTPUT_DIR = "clean_reports"
 
 def find_reports(START_YEAR : int, END_YEAR : int) -> dict:
     # --- Configuration ---
@@ -126,7 +131,6 @@ def find_reports(START_YEAR : int, END_YEAR : int) -> dict:
 
 def download_reports(reports : dict):
 
-    DOWNLOAD_DIR = "reports_archive"
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     for filename, url in reports.items():
@@ -153,16 +157,15 @@ def analyze_documents(reports : dict):
     endpoint = os.environ["DOCUMENTINTELLIGENCE_ENDPOINT"]
     key = os.environ["DOCUMENTINTELLIGENCE_API_KEY"]
     json_folder = "json_reports"
-    markdown_folder = "markdown_reports"
     os.makedirs(json_folder, exist_ok=True)
-    os.makedirs(markdown_folder, exist_ok=True)
+    os.makedirs(AZURE_MARKDOWNS, exist_ok=True)
     
     document_intelligence_client = DocumentIntelligenceClient(endpoint=endpoint, credential=AzureKeyCredential(key))
     
     for filename, url in reports.items():
         title = filename.split(".")[0]
         json_destination = os.path.join(json_folder, title)
-        markdown_destination = os.path.join(markdown_folder, title)
+        markdown_destination = os.path.join(AZURE_MARKDOWNS, title)
 
         print(f"⬇️  Transforming: {title}")
 
@@ -181,9 +184,6 @@ def analyze_documents(reports : dict):
         print(f"✅ Transformed: {title}")
     # [END analyze_documents_output_in_markdown]
 
-
-
-    
     
 if __name__ == "__main__":
     from dotenv import find_dotenv, load_dotenv
@@ -191,7 +191,5 @@ if __name__ == "__main__":
 
     reports = find_reports(2025, 2025)
     download_reports(reports)
-    analyze_documents(reports)
-
-
-
+    #analyze_documents(reports)
+    process_module.main()
