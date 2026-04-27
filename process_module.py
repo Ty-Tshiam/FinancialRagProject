@@ -1,3 +1,4 @@
+# THIS IS AI-GENERATED BUT SH*T IT WORKS I'M NOT GONNA TOUCH IT
 import os
 import re
 import json

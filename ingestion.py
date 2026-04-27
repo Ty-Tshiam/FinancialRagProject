@@ -5,7 +5,16 @@ from azure.ai.documentintelligence.models import AnalyzeDocumentRequest, Documen
 import os
 import json
 import re
+import time
 import process_module 
+from datetime import datetime
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+import random
+from groq import Groq
+import asyncio
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv())
 
 #Configuration & Global Variables
 DOWNLOAD_DIR = "reports_archive"
@@ -184,12 +193,209 @@ def analyze_documents(reports : dict):
         print(f"✅ Transformed: {title}")
     # [END analyze_documents_output_in_markdown]
 
+def chunk_w_metadata(file_path, title):
+    with open(file_path, "r", encoding = 'utf-8') as f:
+        report_text = f.read()
+        report_text = re.sub(r'<!-- PageHeader="(.*?)" -->', r'## \1', report_text)
     
-if __name__ == "__main__":
-    from dotenv import find_dotenv, load_dotenv
-    load_dotenv(find_dotenv())
+    title_data = title.split("_")
+    ticker = title_data[0]
+    calendar_year = title_data[1]
+    fiscal_quarter = title_data[2]
 
+    if fiscal_quarter in {"Q1", "Q2", "Q3"}:
+        document_type = "10-Q"
+        is_audited = False
+
+        match = re.search(r"months ended ([A-Za-z]+ \d+, \d{4})", report_text)
+        filing_date = match.group(1).strip() if match else None
+
+        if filing_date:
+            filing_date = datetime.strptime(filing_date, "%B %d, %Y")
+            filing_date = filing_date.strftime("%Y-%m-%d")
+    elif fiscal_quarter == "Q4":
+        document_type = "10-K"
+        is_audited = True
+
+        match = re.search(r"year ended ([A-Za-z]+ \d+, \d{4})", report_text)
+        filing_date = match.group(1).strip() if match else None
+
+        if filing_date:
+            filing_date = datetime.strptime(filing_date, "%B %d, %Y")
+            filing_date = filing_date.strftime("%Y-%m-%d") 
+    else:
+        document_type = None
+        is_audited = None
+        filing_date = None
+
+    company_names = {"TD": "TD Bank Group", "CTC" : "Canadian Tire"}
+
+    # 1. Split the document by Headers
+    headers_to_split_on = [
+        ("#", "Header_1"),
+        ("##", "Header_2"),
+        ("###", "Header_3"),
+    ]
+    splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+    raw_chunks = splitter.split_text(report_text)
+
+
+    # 2. Stateful Page Tracking
+    current_page = 1  # Default starting page
+    page_marker_pattern = r"--- PAGE (\d+) ---"
+    
+    cleaned_chunks = {}
+    chunk_num = 0
+
+    for chunk in raw_chunks:
+        # Find all page markers inside this specific chunk
+        markers = re.findall(page_marker_pattern, chunk.page_content)
+        
+        # Determine which pages this chunk covers
+        spanned_pages = [current_page]
+        
+        if markers:
+            # Add all new pages found in this chunk to our spanned list
+            for marker in markers:
+                page_num = int(marker)
+                if page_num not in spanned_pages:
+                    spanned_pages.append(page_num)
+            
+            # Update the global state so the NEXT chunk knows where it's starting
+            current_page = int(markers[-1])
+
+        # 3. Inject the page metadata
+        # We store both the starting page and a list of all pages it touches
+        chunk.metadata.update({
+            "chunk_id" : title.lower() + "_" + str(random.randint(0, 999)),
+            "ticker": ticker,
+            "company_name": company_names[ticker],
+            "document_type": document_type,
+            "calendar_year": calendar_year,
+            "fiscal_quarter": fiscal_quarter,
+            "is_audited": is_audited,
+            "filing_date": filing_date,
+            "page(s)": spanned_pages
+        })
+
+        # 4. Clean the chunk (Remove the markers so they don't confuse the LLM)
+        chunk.page_content = re.sub(page_marker_pattern, "", chunk.page_content).strip()
+        chunk.page_content = re.sub(r'<!-- PageFooter=".*?" -->', '', chunk.page_content)
+        chunk.page_content = re.sub(r'<!-- PageNumber=".*?" -->', '', chunk.page_content)
+        
+        
+        # Only keep chunks that actually have text left after cleaning
+        if chunk.page_content:
+            cleaned_chunks[f"{title}_{chunk_num}"] = {
+                "content" : chunk.page_content,
+                "metadata": chunk.metadata
+            }
+            chunk_num += 1
+
+    output = os.path.join(OUTPUT_DIR, title + ".json")
+    with open(output, "w", encoding = "utf-8") as file:
+        json.dump(cleaned_chunks, file, indent = 4)
+
+
+def add_llm_metadata(file_path, title):
+    # Ensure output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    with open(file_path, "r", encoding="utf-8") as file:
+        chunks = json.loads(file.read())
+
+    # Initialize Groq Client
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+
+    for chunk_name, chunk_data in chunks.items():
+        if chunks[chunk_name]["metadata"]["section_summary"]:
+            print(f"Skipped {chunk_name}")
+            continue
+        # Extracted content 
+        content = chunk_data.get("content", "")
+        
+        prompt = f"""
+        Analyze the following text block. You must respond ONLY with a valid JSON object containing exactly these five keys:
+        - "section_summary": A one-sentence summary of the text.
+        - "section_title": A short, 3-5 word title for the text.
+        - "questions_answered": A single string containing 3 questions this text answers, separated by commas.
+        - "financial_tags": A list/array of short tags indicating financial topics (e.g., ["Revenue", "Risk"]), or ["None"] if not financial.
+        - "is_table": A boolean value (true or false) indicating whether the primary content is a formatted table.
+        
+        Text block to analyze:
+        {content}
+        """
+
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                # API Call using Groq's JSON mode
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant", # Highly recommended for fast, cheap JSON structuring
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful data-extraction assistant. You always output strictly valid JSON."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    response_format={"type": "json_object"}
+                )
+
+                # Parse the guaranteed JSON response
+                answer = response.choices[0].message.content
+                llm_data = json.loads(answer)
+
+                # Update dictionary safely using .get() to prevent KeyErrors
+                chunks[chunk_name]["metadata"].update({
+                    "section_summary": llm_data.get("section_summary", "No summary provided."),
+                    "section_title": llm_data.get("section_title", "Untitled"),
+                    "questions_answered": llm_data.get("questions_answered", ""),
+                    "financial_tags": llm_data.get("financial_tags", ["None"]),
+                    "is_table": llm_data.get("is_table", False)
+                })
+                
+                print(f"Successfully processed {chunk_name}")
+                
+                # Baseline pace to respect the 30 RPM limit (1 request every ~2 seconds)
+                time.sleep(2.1)
+                break # Break out of retry loop on success
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                # Catch Rate Limits specifically (429 Error)
+                if "rate limit" in error_msg or "429" in error_msg:
+                    wait_time = (attempt + 1) * 10 # Exponential backoff: 10s, 20s, 30s...
+                    print(f"Rate limit hit (TPM/RPM maxed). Sleeping for {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"Unexpected error on {chunk_name}: {e}")
+                    break # Break on non-rate-limit errors so you don't infinitely loop on bad data
+
+    # Save output
+    output_path = os.path.join(OUTPUT_DIR, f"{title}.json")
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump(chunks, file, indent=4)
+        
+    print(f"Finished processing. Saved to {output_path}")
+
+
+
+
+
+if __name__ == "__main__":
+    
     reports = find_reports(2025, 2025)
     download_reports(reports)
     #analyze_documents(reports)
-    process_module.main()
+    #process_module.main()
+
+    for file, _ in reports.items():
+        title = file.split(".")[0]
+        markdown_path = os.path.join(OUTPUT_DIR, title + ".md")
+        json_path = os.path.join(OUTPUT_DIR, title + ".json")
+        chunk_w_metadata(markdown_path, title)
+        add_llm_metadata(json_path, title)
