@@ -3279,7 +3279,15 @@
             "page(s)": [
                 75,
                 76
-            ]
+            ],
+            "section_summary": "Canadian deposit insurance financials are presented in this table.",
+            "section_title": "Canadian Deposit Insurance",
+            "questions_answered": "What is the financial status of the Canada Deposit Insurance Corporation?, \n                         What types of deposits does the corporation guarantee?, \n                         What is the geographical split of deposits?",
+            "financial_tags": [
+                "Revenue",
+                "Risk"
+            ],
+            "is_table": true
         }
     },
     "TD_2025_Q3_119": {
@@ -3405,7 +3413,16 @@
             "filing_date": "2025-07-31",
             "page(s)": [
                 77
-            ]
+            ],
+            "section_summary": "Summary financial data covering share purchases and treasury activities.",
+            "section_title": "Share and Treasury Activities",
+            "questions_answered": "What is the redemption price of Series 5 Preferred Shares, What is the redemption price of Series 7 Preferred Shares, How are the LRCNs redeemed?",
+            "financial_tags": [
+                "Revenue",
+                "Risk",
+                "Finance"
+            ],
+            "is_table": true
         }
     },
     "TD_2025_Q3_124": {
@@ -3557,7 +3574,17 @@
             "page(s)": [
                 78,
                 79
-            ]
+            ],
+            "section_summary": "The text provides financial information about various pension and benefit plans operated by a bank for the periods ended July 31, 2024 and 2025.",
+            "section_title": "Financial Plan Expenses",
+            "questions_answered": "What is the total expense for defined benefit pension plans for the three months ended July 31, 2025? How is the total expense for defined benefit pension plans calculated? What are the remeasurement gain/loss for principal pension plans for the nine months ended July 31, 2024?",
+            "financial_tags": [
+                "Revenue",
+                "Expenses",
+                "Risk",
+                "Pension"
+            ],
+            "is_table": false
         }
     },
     "TD_2025_Q3_130": {
@@ -3608,7 +3635,16 @@
             "page(s)": [
                 80,
                 81
-            ]
+            ],
+            "section_summary": "Text describes how to calculate basic and diluted earnings per share.",
+            "section_title": "Earnings Per Share",
+            "questions_answered": "How to calculate basic earnings per share, How to calculate diluted earnings per share, What are dilutive potential common shares",
+            "financial_tags": [
+                "Earnings",
+                "Stocks",
+                "Revenue"
+            ],
+            "is_table": true
         }
     },
     "TD_2025_Q3_132": {
@@ -3684,7 +3720,16 @@
             "page(s)": [
                 81,
                 82
-            ]
+            ],
+            "section_summary": "The Bank and its subsidiaries are involved in various legal and regulatory actions.",
+            "section_title": "Legal and Regulatory Actions",
+            "questions_answered": "What legal actions is the Bank involved in? What is the Bank's RPL and provisions? Are the Bank's losses estimable?",
+            "financial_tags": [
+                "Revenue",
+                "Risk",
+                "Compliance"
+            ],
+            "is_table": false
         }
     },
     "TD_2025_Q3_135": {
@@ -3703,7 +3748,17 @@
             "page(s)": [
                 82,
                 83
-            ]
+            ],
+            "section_summary": "The Bank reports its results from business operations and activities under four key business segments.",
+            "section_title": "Bank Business Segments",
+            "questions_answered": "What are the four key business segments of the Bank, What activities are grouped into the Corporate segment, How does the retailer program work.",
+            "financial_tags": [
+                "Revenue",
+                "Risk",
+                "Expenses",
+                "Net Income"
+            ],
+            "is_table": false
         }
     },
     "TD_2025_Q3_136": {

@@ -8,10 +8,11 @@ import re
 import time
 import process_module 
 from datetime import datetime
-from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter
 import random
 from groq import Groq
-import asyncio
+from pinecone import Pinecone
+import voyageai
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
@@ -308,9 +309,13 @@ def add_llm_metadata(file_path, title):
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
     for chunk_name, chunk_data in chunks.items():
-        if chunks[chunk_name]["metadata"]["section_summary"]:
+
+        metadata = chunks.get(chunk_name, {}).get("metadata", {})
+        summary = metadata.get("section_summary")
+        if summary == "" or summary:
             print(f"Skipped {chunk_name}")
             continue
+
         # Extracted content 
         content = chunk_data.get("content", "")
         
@@ -382,9 +387,97 @@ def add_llm_metadata(file_path, title):
         
     print(f"Finished processing. Saved to {output_path}")
 
+import os
+import json
+import voyageai
+from pinecone import Pinecone, ServerlessSpec
 
+def creating_embeddings(file_path):
+    def embedding(docs: list[str], input_type: str, client, model_id) -> list[list[float]]:
+        vectors = client.embed(
+            docs,
+            model=model_id,
+            input_type=input_type
+        ).embeddings
+        return vectors
 
+    # 1. Initialize Pinecone
+    pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+    index_name = "voyage-finance-2"
+    
+    if not pc.has_index(index_name):
+        pc.create_index(
+            name=index_name,
+            dimension=1024,
+            metric="cosine",
+            spec=ServerlessSpec(
+                cloud="aws",
+                region="us-east-1"
+            )
+        )
+    index = pc.Index(index_name)
 
+    # 2. Initialize Voyage
+    vo = voyageai.Client(api_key=os.environ["VOYAGE_API_KEY"])
+    embed_model = "voyage-finance-2"
+
+    # 3. Load Data
+    with open(file_path, "r", encoding="utf-8") as f:
+        chunks = json.loads(f.read())
+
+    # We need to extract the keys and contents into ordered lists so they match up later
+    chunk_ids = list(chunks.keys())
+    chunk_contents = [chunks[cid]["content"] for cid in chunk_ids]
+
+    # 4. Batch the Voyage Embedding Requests
+    all_embeddings = []
+    voyage_batch_size = 50  # Adjust this if you still hit the token limit
+    
+    print(f"Embedding {len(chunk_contents)} chunks in batches of {voyage_batch_size}...")
+    
+    for i in range(0, len(chunk_contents), voyage_batch_size):
+        batch_docs = chunk_contents[i : i + voyage_batch_size]
+        batch_embeddings = embedding(
+            docs=batch_docs, 
+            input_type="document", 
+            client=vo, 
+            model_id=embed_model
+        )
+        all_embeddings.extend(batch_embeddings)
+
+    # 5. Assemble the Vectors for Pinecone
+    vectors = []
+    for c, e in zip(chunks, all_embeddings):
+        # 1. Grab JUST the metadata dictionary from your JSON
+        valid_metadata = chunks[c]["metadata"].copy()
+        
+        # 2. Add the raw text content into this flat dictionary 
+        # (You need this so your RAG can return the actual text to the user)
+        valid_metadata["text"] = chunks[c]["content"]
+        
+        # 3. Fix the page(s) array by converting any numbers to strings
+        if "page(s)" in valid_metadata:
+            valid_metadata["page(s)"] = [str(p) for p in valid_metadata["page(s)"]]
+            
+        # 4. Append to Pinecone payload
+        vectors.append({
+            "id": chunks[c]["metadata"]["chunk_id"], # Usually better to use the chunk_id from metadata
+            "values": e,
+            "metadata": valid_metadata
+        })
+    
+    # 6. Batch the Pinecone Upserts (Pinecone limits payload sizes)
+    pinecone_batch_size = 100
+    print(f"Upserting vectors to Pinecone in batches of {pinecone_batch_size}...")
+    
+    for i in range(0, len(vectors), pinecone_batch_size):
+        batch_vectors = vectors[i : i + pinecone_batch_size]
+        index.upsert(
+            vectors=batch_vectors,
+            namespace="ns1"
+        )
+    
+    print("Embedding and indexing complete!")
 
 if __name__ == "__main__":
     
@@ -397,5 +490,8 @@ if __name__ == "__main__":
         title = file.split(".")[0]
         markdown_path = os.path.join(OUTPUT_DIR, title + ".md")
         json_path = os.path.join(OUTPUT_DIR, title + ".json")
-        chunk_w_metadata(markdown_path, title)
-        add_llm_metadata(json_path, title)
+        #chunk_w_metadata(markdown_path, title)
+        #add_llm_metadata(json_path, title)
+        if "Q4" not in title:
+            creating_embeddings(json_path)
+

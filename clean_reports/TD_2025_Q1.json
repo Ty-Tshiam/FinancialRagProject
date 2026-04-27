@@ -4249,7 +4249,15 @@
             "filing_date": "2025-01-31",
             "page(s)": [
                 75
-            ]
+            ],
+            "section_summary": "Comparison of financial values for two time periods.",
+            "section_title": "Financial Comparison",
+            "questions_answered": "What is the difference in measured at amortized cost from Q1 2024 to Q1 2025? What is the total measured at FVOCI - Debt instruments for Q1 2024? What is the total for both Q1 2024 and Q1 2025 in millions of Canadian dollars?",
+            "financial_tags": [
+                "Revenue",
+                "Risk"
+            ],
+            "is_table": true
         }
     },
     "TD_2025_Q1_151": {

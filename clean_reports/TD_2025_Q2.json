@@ -14,7 +14,7 @@
                 1
             ],
             "section_summary": "",
-            "section_title": "Figure Block Found",
+            "section_title": "Figure Description",
             "questions_answered": "",
             "financial_tags": [
                 "None"
@@ -37,8 +37,8 @@
             "page(s)": [
                 1
             ],
-            "section_summary": "",
-            "section_title": "Image Figure End",
+            "section_summary": "Figure element closed",
+            "section_title": "Figure Closure",
             "questions_answered": "",
             "financial_tags": [
                 "None"
