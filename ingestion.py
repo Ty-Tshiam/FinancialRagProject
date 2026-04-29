@@ -9,10 +9,9 @@ import time
 import process_module 
 from datetime import datetime
 from langchain_text_splitters import MarkdownHeaderTextSplitter
-import random
 from groq import Groq
-from pinecone import Pinecone
 import voyageai
+from pinecone import Pinecone, ServerlessSpec
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
@@ -268,7 +267,7 @@ def chunk_w_metadata(file_path, title):
         # 3. Inject the page metadata
         # We store both the starting page and a list of all pages it touches
         chunk.metadata.update({
-            "chunk_id" : title.lower() + "_" + str(random.randint(0, 999)),
+            "chunk_id" : title.lower() + "_" + str(chunk_num),
             "ticker": ticker,
             "company_name": company_names[ticker],
             "document_type": document_type,
@@ -332,11 +331,12 @@ def add_llm_metadata(file_path, title):
         """
 
         max_retries = 5
+        model_id = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
         for attempt in range(max_retries):
             try:
                 # API Call using Groq's JSON mode
                 response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant", # Highly recommended for fast, cheap JSON structuring
+                    model=model_id[attempt % 2], 
                     messages=[
                         {
                             "role": "system",
@@ -374,7 +374,7 @@ def add_llm_metadata(file_path, title):
                 # Catch Rate Limits specifically (429 Error)
                 if "rate limit" in error_msg or "429" in error_msg:
                     wait_time = (attempt + 1) * 10 # Exponential backoff: 10s, 20s, 30s...
-                    print(f"Rate limit hit (TPM/RPM maxed). Sleeping for {wait_time}s...")
+                    print(f"Rate limit hit (TPM/RPM maxed). Switching models and sleeping for {wait_time}s...")
                     time.sleep(wait_time)
                 else:
                     print(f"Unexpected error on {chunk_name}: {e}")
@@ -387,20 +387,16 @@ def add_llm_metadata(file_path, title):
         
     print(f"Finished processing. Saved to {output_path}")
 
-import os
-import json
-import voyageai
-from pinecone import Pinecone, ServerlessSpec
-
-def creating_embeddings(file_path):
-    def embedding(docs: list[str], input_type: str, client, model_id) -> list[list[float]]:
-        vectors = client.embed(
+def embedding(docs: list[str], input_type: str, client : object, model_id : str) -> list[list[float]]:
+    vectors = client.embed(
             docs,
             model=model_id,
             input_type=input_type
-        ).embeddings
-        return vectors
+    ).embeddings
+    return vectors
 
+def creating_embeddings(file_path):
+    
     # 1. Initialize Pinecone
     pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
     index_name = "voyage-finance-2"
@@ -483,15 +479,14 @@ if __name__ == "__main__":
     
     reports = find_reports(2025, 2025)
     download_reports(reports)
-    #analyze_documents(reports)
-    #process_module.main()
+    analyze_documents(reports)
+    process_module.main()
 
     for file, _ in reports.items():
         title = file.split(".")[0]
         markdown_path = os.path.join(OUTPUT_DIR, title + ".md")
         json_path = os.path.join(OUTPUT_DIR, title + ".json")
-        #chunk_w_metadata(markdown_path, title)
-        #add_llm_metadata(json_path, title)
-        if "Q4" not in title:
-            creating_embeddings(json_path)
+        chunk_w_metadata(markdown_path, title)
+        add_llm_metadata(json_path, title)
+        creating_embeddings(json_path)
 
